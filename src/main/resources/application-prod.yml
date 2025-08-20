@@ -27,10 +27,21 @@ spring:
           issuer-uri: ${KEYCLOAK_ISSUER_URI}
           jwk-set-uri: ${KEYCLOAK_JWK_SET_URI}
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    consumer:
+      group-id: ${spring.application.name}-prod-group
+    producer:
+      compression-type: lz4
+      batch-size: 65536
+      linger-ms: 50
+
 logging:
   level:
     com.cappymerida.patients: INFO
     org.springframework.security: WARN
+    org.springframework.kafka: INFO
+    org.apache.kafka: WARN
     org.hibernate.SQL: WARN
   file:
     name: /var/log/patients-service.log
@@ -40,3 +51,43 @@ management:
     web:
       exposure:
         include: health,metrics,prometheus
+
+kafka:
+  event:
+    publishing:
+      enabled: true
+      retry-attempts: 5
+      retry-backoff-ms: 2000
+    schema:
+      validation-enabled: true
+      auto-register: false # En producción se registran manualmentepatients: ${LOG_LEVEL:DEBUG}
+    org.springframework.security: ${SECURITY_LOG_LEVEL:INFO}
+    org.springframework.kafka: ${KAFKA_LOG_LEVEL:INFO}
+    org.apache.kafka: ${KAFKA_LOG_LEVEL:INFO}
+    org.hibernate.SQL: ${SQL_LOG_LEVEL:INFO}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
+  topics:
+    patient-events: ${KAFKA_TOPIC_PATIENT_EVENTS:emr.patients.events}
+    patient-events-dlq: ${KAFKA_TOPIC_PATIENT_EVENTS_DLQ:emr.patients.events.dlq}
+    audit-events: ${KAFKA_TOPIC_AUDIT_EVENTS:emr.audit.events}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+  show-actuator: true
+
+  schema-registry:
+    url: ${KAFKA_SCHEMA_REGISTRY_URL:http://localhost:8081}
+
+  event:
+    publishing:
+      enabled: ${EVENT_PUBLISHING_ENABLED:true}
+      retry-attempts: ${EVENT_RETRY_ATTEMPTS:3}
+      retry-backoff-ms: ${EVENT_RETRY_BACKOFF_MS:1000}
+    schema:
+      validation-enabled: ${EVENT_SCHEMA_VALIDATION_ENABLED:true}
+      auto-register: ${EVENT_SCHEMA_AUTO_REGISTER:true}

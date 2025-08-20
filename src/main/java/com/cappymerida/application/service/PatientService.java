@@ -4,8 +4,11 @@ import com.cappymerida.domain.enums.Status;
 import com.cappymerida.domain.model.Patient;
 import com.cappymerida.domain.model.PatientStatistics;
 import com.cappymerida.domain.repository.PatientRepository;
+import lombok.AllArgsConstructor;
+import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -14,28 +17,20 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
+@AllArgsConstructor
+@NoArgsConstructor
 @Slf4j
+@Qualifier("patientService")
 @Transactional
 public class PatientService {
 
-    private final PatientRepository patientRepository;
+    private PatientRepository patientRepository;
 
     public Patient createPatient(Patient patient) {
         log.info("Creating new patient: {}", patient.getDemographics().getFullName());
 
-        // Validate unique email
-        if (patient.getContactInfo().getEmail() != null &&
-                patientRepository.existsByContactInfoEmail(patient.getContactInfo().getEmail())) {
-            throw new IllegalArgumentException("Email already exists");
-        }
-
-        // Validate unique SSN
-        if (patient.getDemographics().getSocialSecurityNumber() != null &&
-                patientRepository.existsByDemographicsSocialSecurityNumber(
-                        patient.getDemographics().getSocialSecurityNumber())) {
-            throw new IllegalArgumentException("Social Security Number already exists");
-        }
+        // Validaciones de unicidad
+        validateUniqueConstraints(patient);
 
         Patient savedPatient = patientRepository.save(patient);
         log.info("Patient created with ID: {}", savedPatient.getId());
@@ -72,15 +67,10 @@ public class PatientService {
         Patient existingPatient = patientRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Patient not found"));
 
-        // Validate unique email (excluding current patient)
-        if (updatedPatient.getContactInfo().getEmail() != null) {
-            var existingByEmail = patientRepository.findByContactInfoEmail(updatedPatient.getContactInfo().getEmail());
-            if (existingByEmail.isPresent() && !existingByEmail.get().getId().equals(id)) {
-                throw new IllegalArgumentException("Email already exists for another patient");
-            }
-        }
+        // Validar unicidad excluyendo el paciente actual
+        validateUniqueConstraintsForUpdate(id, updatedPatient);
 
-        // Update fields
+        // Actualizar campos
         existingPatient.setDemographics(updatedPatient.getDemographics());
         existingPatient.setContactInfo(updatedPatient.getContactInfo());
         existingPatient.setEmergencyContact(updatedPatient.getEmergencyContact());
@@ -135,4 +125,60 @@ public class PatientService {
         return new PatientStatistics(totalPatients, activePatients, inactivePatients, deceasedPatients);
     }
 
+    // Métodos de validación protegidos para uso en subclases
+    protected void validateUniqueConstraints(Patient patient) {
+        // Validar email único
+        if (patient.getContactInfo().getEmail() != null &&
+                patientRepository.existsByContactInfoEmail(patient.getContactInfo().getEmail())) {
+            throw new IllegalArgumentException("Email already exists");
+        }
+
+        // Validar SSN único
+        if (patient.getDemographics().getSocialSecurityNumber() != null &&
+                patientRepository.existsByDemographicsSocialSecurityNumber(
+                        patient.getDemographics().getSocialSecurityNumber())) {
+            throw new IllegalArgumentException("Social Security Number already exists");
+        }
+    }
+
+    protected void validateUniqueConstraintsForUpdate(String excludePatientId, Patient updatedPatient) {
+        // Validar email único (excluyendo el paciente actual)
+        if (updatedPatient.getContactInfo().getEmail() != null) {
+            var existingByEmail = patientRepository.findByContactInfoEmail(updatedPatient.getContactInfo().getEmail());
+            if (existingByEmail.isPresent() && !existingByEmail.get().getId().equals(excludePatientId)) {
+                throw new IllegalArgumentException("Email already exists for another patient");
+            }
+        }
+
+        // Validar SSN único (excluyendo el paciente actual)
+        if (updatedPatient.getDemographics().getSocialSecurityNumber() != null) {
+            var existingBySsn = patientRepository.findByDemographicsSocialSecurityNumber(
+                    updatedPatient.getDemographics().getSocialSecurityNumber());
+            if (!existingBySsn.isEmpty() &&
+                    existingBySsn.stream().anyMatch(p -> !p.getId().equals(excludePatientId))) {
+                throw new IllegalArgumentException("Social Security Number already exists for another patient");
+            }
+        }
+    }
+
+    protected String detectChangedFields(Patient existing, Patient updated) {
+        java.util.List<String> changes = new java.util.ArrayList<>();
+
+        if (!existing.getDemographics().equals(updated.getDemographics())) {
+            changes.add("demographics");
+        }
+        if (!existing.getContactInfo().equals(updated.getContactInfo())) {
+            changes.add("contactInfo");
+        }
+        if (!existing.getEmergencyContact().equals(updated.getEmergencyContact())) {
+            changes.add("emergencyContact");
+        }
+
+        return String.join(",", changes);
+    }
+
+    // Getter protegido para el repository
+    protected PatientRepository getPatientRepository() {
+        return patientRepository;
+    }
 }

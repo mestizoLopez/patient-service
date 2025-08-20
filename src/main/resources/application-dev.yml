@@ -16,14 +16,31 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/realms/emr
+          issuer-uri: http://localhost:8080/realms/emr-dev
+
+  kafka:
+    consumer:
+      group-id: ${spring.application.name}-dev-group
 
 logging:
   level:
     com.cappymerida.patients: DEBUG
     org.springframework.security: DEBUG
+    org.springframework.kafka: DEBUG
+    org.apache.kafka: INFO
     org.hibernate.SQL: DEBUG
 
 eureka:
   client:
     enabled: false
+
+kafka:
+  event:
+    publishing:
+      enabled: true
+    schema:
+      validation-enabled: false # Deshabilitado para desarrollo
+  topics:
+    patient-events: ${KAFKA_TOPIC_PATIENT_EVENTS:emr.patients.events}
+    patient-events-dlq: ${KAFKA_TOPIC_PATIENT_EVENTS_DLQ:emr.patients.events.dlq}
+    audit-events: ${KAFKA_TOPIC_AUDIT_EVENTS:emr.audit.events}

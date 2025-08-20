@@ -6,14 +6,14 @@ spring:
     active: dev
 
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:5432/emr_patients
+    url: jdbc:postgresql://localhost:5432/emr_patients
     username: ${DB_USERNAME:emr_user}
     password: ${DB_PASSWORD:emr_password}
     driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
@@ -47,14 +47,65 @@ spring:
       database: 0
       timeout: 2000ms
 
-keycloak:
-  realm: emr
-  auth-server-url: http://localhost:8080
-  client-id: patients-service
-  client-secret: 1v1uFTKuqtncqSRtltQrIyKgVDnMBn7h
+  # =================================
+  # KAFKA CONFIGURATION
+  # =================================
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+    client-id: ${spring.application.name}-${random.uuid}
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      enable-idempotence: true
+      compression-type: snappy
+      linger-ms: 20
+      batch-size: 32768
+      buffer-memory: 33554432
+      max-in-flight-requests-per-connection: 1
+      request-timeout-ms: 20000
+      properties:
+        spring.json.add.type.headers: false
+        spring.json.type.mapping: >
+          patientEvent:com.cappymerida.domain.records.PatientEvent,
+          baseEvent:com.cappymerida.domain.records.BaseEvent
+
+    consumer:
+      group-id: ${spring.application.name}-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 10
+      max-poll-interval-ms: 300000
+      session-timeout-ms: 30000
+      heartbeat-interval-ms: 10000
+      properties:
+        spring.json.trusted.packages: "com.cappymerida.domain.records"
+        spring.json.type.mapping: >
+          patientEvent:com.cappymerida.domain.records.PatientEvent,
+          baseEvent:com.cappymerida.domain.records.BaseEvent
+
+    listener:
+      ack-mode: manual
+      concurrency: 3
+      poll-timeout: 3000
+      type: batch
+
+    streams:
+      application-id: ${spring.application.name}-streams
+      auto-startup: true
+      replication-factor: 1
+
+    admin:
+      properties:
+        request.timeout.ms: 20000
+        default.api.timeout.ms: 20000
 
 server:
-  port: 8180
+  port: 8181
   servlet:
     context-path: /
   compression:
@@ -64,7 +115,7 @@ eureka:
   client:
     service-url:
       defaultZone: ${EUREKA_URI:http://localhost:8761/eureka}
-    enabled: ${EUREKA_ENABLED:true}
+    enabled: ${EUREKA_ENABLED:false}
   instance:
     prefer-ip-address: true
     lease-renewal-interval-in-seconds: 10
@@ -74,10 +125,16 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        include: health,info,metrics,prometheus,kafka
   endpoint:
     health:
       show-details: always
+    kafka:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      service: patients
   tracing:
     sampling:
       probability: 1.0
@@ -88,17 +145,14 @@ management:
 
 logging:
   level:
-    com.cappymerida.patients: ${LOG_LEVEL:DEBUG}
-    org.springframework.security: ${SECURITY_LOG_LEVEL:DEBUG}
-    org.springframework.security.oauth2: DEBUG
-    org.hibernate.SQL: ${SQL_LOG_LEVEL:DEBUG}
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
+    com.cappymerida.patients: INFO
+    org.springframework.kafka: WARN
+    org.apache.kafka: WARN
+    org.springframework.security: WARN
 
-springdoc:
-  api-docs:
-    path: /v3/api-docs
-  swagger-ui:
-    path: /swagger-ui.html
-    enabled: true
-  show-actuator: true
+kafka:
+  event:
+    publishing:
+      enabled: false # Deshabilitado para tests
+    schema:
+      validation-enabled: false
